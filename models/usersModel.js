@@ -19,13 +19,15 @@ const UserSchema = new mongoose.Schema({
         required: true
     },
     order_history: [{
-            order_id: {
-                type: mongoose.Schema.Types.ObjectId, ref: 'Order',
-            },},],
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Order',
+}],
 } , {
     timestamps: true
 });
-    
 
-const Users = mongoose.model('User', UserSchema);
-module.exports = { Users };
+UserSchema.index({ email: 1 });
+UserSchema.index({ username: 1 });
+
+const User = mongoose.model('User', UserSchema);
+module.exports = { User };
