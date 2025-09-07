@@ -258,20 +258,14 @@ const logoutUser = async (req, res) => {
     }
 };
 
+// FIXED: Get current user's details (security fix)
 const getUserDetails = async (req, res) => {
     try {
-        const { email } = req.query;
+        // Security fix: Use authenticated user's ID instead of query parameter
+        const userId = req.user.id;
 
-        if (!email) {
-            return res.status(400).json({ error: 'Email parameter is required' });
-        }
-
-        if (!validateEmail(email)) {
-            return res.status(400).json({ error: 'Invalid email format' });
-        }
-
-        // Fetch user details based on the user email
-        const userDetails = await User.findOne({ email: email.toLowerCase().trim() })
+        // Fetch user details for the authenticated user
+        const userDetails = await User.findById(userId)
             .populate('order_history')
             .select('-password'); // Exclude password from response
 
@@ -296,9 +290,10 @@ const getUserDetails = async (req, res) => {
     }
 };
 
+// SECURED: Admin-only function to get user details by ID
 const getUserDetailsFromId = async (req, res) => {
     try {
-        const { userId } = req.params; // Changed from query to params for better REST practices
+        const { userId } = req.params;
 
         if (!userId) {
             return res.status(400).json({ error: 'User ID is required' });
@@ -308,6 +303,9 @@ const getUserDetailsFromId = async (req, res) => {
         if (!mongoose.Types.ObjectId.isValid(userId)) {
             return res.status(400).json({ error: 'Invalid user ID format' });
         }
+
+        // Security check: Only admins can access this endpoint (handled by middleware)
+        // Additional check: req.user.role === 'admin' should be verified by requireAdmin middleware
 
         const userDetails = await User.findById(userId)
             .populate('order_history')
@@ -334,6 +332,7 @@ const getUserDetailsFromId = async (req, res) => {
     }
 };
 
+// FIXED: Update user with proper authorization
 const updateUser = async (req, res) => {
     const { userId } = req.params;
     const { username, email, password, phone_number, address, role } = req.body;
@@ -342,6 +341,13 @@ const updateUser = async (req, res) => {
         // Validate ObjectId format
         if (!mongoose.Types.ObjectId.isValid(userId)) {
             return res.status(400).json({ message: 'Invalid user ID format' });
+        }
+
+        // Security check: Users can only update their own profile unless they're admin
+        if (req.user.role !== 'admin' && userId !== req.user.id) {
+            return res.status(403).json({ 
+                message: 'Access denied. You can only update your own profile.' 
+            });
         }
 
         const user = await User.findById(userId);
@@ -422,7 +428,14 @@ const updateUser = async (req, res) => {
             };
         }
 
+        // Security: Only admins can change roles
         if (role !== undefined) {
+            if (req.user.role !== 'admin') {
+                return res.status(403).json({
+                    message: 'Only administrators can change user roles'
+                });
+            }
+            
             if (!['user', 'admin'].includes(role)) {
                 return res.status(400).json({
                     message: 'Role must be either "user" or "admin"'
@@ -465,6 +478,14 @@ const deleteUser = async (req, res) => {
         // Validate ObjectId format
         if (!mongoose.Types.ObjectId.isValid(userId)) {
             return res.status(400).json({ message: 'Invalid user ID format' });
+        }
+
+        // Security check: Only admins can delete users (handled by requireAdmin middleware)
+        // Additional protection: Prevent deleting own admin account
+        if (userId === req.user.id) {
+            return res.status(400).json({ 
+                message: 'You cannot delete your own account' 
+            });
         }
 
         const deletedUser = await User.findByIdAndDelete(userId);
@@ -552,7 +573,7 @@ const getAllUsers = async (req, res) => {
     }
 };
 
-// Change password function
+// FIXED: Change password with proper authorization
 const changePassword = async (req, res) => {
     const { userId } = req.params;
     const { currentPassword, newPassword } = req.body;
@@ -561,6 +582,18 @@ const changePassword = async (req, res) => {
         if (!currentPassword || !newPassword) {
             return res.status(400).json({
                 message: 'Current password and new password are required'
+            });
+        }
+
+        // Validate ObjectId format
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ message: 'Invalid user ID format' });
+        }
+
+        // Security check: Users can only change their own password unless they're admin
+        if (req.user.role !== 'admin' && userId !== req.user.id) {
+            return res.status(403).json({ 
+                message: 'Access denied. You can only change your own password.' 
             });
         }
 
@@ -575,10 +608,15 @@ const changePassword = async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Verify current password
-        const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
-        if (!isCurrentPasswordValid) {
-            return res.status(401).json({ message: 'Current password is incorrect' });
+        // For admin changing other user's password, skip current password verification
+        if (req.user.role === 'admin' && userId !== req.user.id) {
+            // Admin changing another user's password - no current password needed
+        } else {
+            // User changing their own password - verify current password
+            const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
+            if (!isCurrentPasswordValid) {
+                return res.status(401).json({ message: 'Current password is incorrect' });
+            }
         }
 
         // Hash new password
