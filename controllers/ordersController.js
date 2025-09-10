@@ -3,6 +3,20 @@ const { Product } = require('../models/productsModel');
 const { Cart } = require('../models/cartModel');
 const mongoose = require('mongoose');
 
+// Helper function to calculate order totals
+const calculateOrderTotals = (subtotal) => {
+    const shipping = subtotal > 100 ? 0 : 10; // Free shipping over $100
+    const tax = subtotal * 0.08; // 8% tax
+    const total = subtotal + shipping + tax;
+    
+    return {
+        subtotal,
+        shipping,
+        tax,
+        total
+    };
+};
+
 const getAllOrders = async (req, res) => {
     try {
         // Add pagination for better performance
@@ -68,7 +82,7 @@ const getUserOrders = async (req, res) => {
     }
 };
 
-// FIXED: Create order with MongoDB transactions
+// IMPROVED: Create order with proper total calculation
 const createOrder = async (req, res) => {
     const { products, total_amount } = req.body;
     const userId = req.user.id; // Get from authenticated user
@@ -87,7 +101,7 @@ const createOrder = async (req, res) => {
         // Start transaction
         await session.withTransaction(async () => {
             const orderProducts = [];
-            let calculatedTotal = 0;
+            let calculatedSubtotal = 0;
 
             // Process each product in the order
             for (const item of products) {
@@ -126,7 +140,7 @@ const createOrder = async (req, res) => {
                 // Use current product price to prevent manipulation
                 const currentPrice = product.price;
                 const itemTotal = currentPrice * quantity;
-                calculatedTotal += itemTotal;
+                calculatedSubtotal += itemTotal;
 
                 // Update product quantity atomically
                 const updateResult = await Product.updateOne(
@@ -151,16 +165,21 @@ const createOrder = async (req, res) => {
                 });
             }
 
-            // Validate total amount (allow small floating point differences)
-            if (total_amount && Math.abs(calculatedTotal - total_amount) > 0.01) {
-                throw new Error(`Total amount mismatch. Calculated: ${calculatedTotal}, Provided: ${total_amount}`);
+            // IMPROVED: Calculate all totals including shipping and tax
+            const orderTotals = calculateOrderTotals(calculatedSubtotal);
+
+            // Validate subtotal if provided (more flexible validation)
+            if (total_amount && Math.abs(calculatedSubtotal - total_amount) > 0.01) {
+                console.warn(`Subtotal mismatch. Calculated: ${calculatedSubtotal}, Provided: ${total_amount}. Using calculated value.`);
             }
 
-            // Create and save the order
+            // Create and save the order with calculated totals
             const newOrder = new Order({
                 user_id: userId,
                 products: orderProducts,
-                total_amount: calculatedTotal
+                total_amount: orderTotals.total, // Use calculated total including shipping
+                subtotal: orderTotals.subtotal,
+                shipping: orderTotals.shipping
             });
 
             await newOrder.save({ session });
