@@ -4,11 +4,19 @@ const { User } = require('../models/usersModel');
 // Basic authentication middleware
 const isAuth = async (req, res, next) => {
     try {
-        const token = req.cookies.jwt;
+        // Try to get token from cookie first, then from Authorization header
+        let token = req.cookies.jwt;
 
         if (!token) {
-            return res.status(401).json({ 
-                message: 'Unauthorized - No token provided' 
+            const authHeader = req.headers.authorization;
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                token = authHeader.substring(7); // Remove 'Bearer ' prefix
+            }
+        }
+
+        if (!token) {
+            return res.status(401).json({
+                message: 'Unauthorized - No token provided'
             });
         }
 
