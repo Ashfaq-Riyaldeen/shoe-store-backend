@@ -55,9 +55,11 @@ const getAllProducts = async (req, res) => {
             filter['attributes.color'] = new RegExp(color, 'i');
         }
 
-        // Size filter
+        // Size filter - handle both string and number types
         if (size) {
-            filter['attributes.sizes'] = size;
+            // Try to convert to number if it's a numeric string
+            const numericSize = !isNaN(size) ? Number(size) : size;
+            filter['attributes.sizes'] = numericSize;
         }
 
         // Search filter (name or description)
@@ -350,7 +352,17 @@ const deleteProduct = async (req, res) => {
 const getAvailableSizes = async (req, res) => {
     try {
         const sizes = await Product.distinct('attributes.sizes');
-        res.status(200).json({ availableSizes: sizes.sort() });
+        // Convert to strings and sort
+        const sizesAsStrings = sizes.map(s => String(s)).sort((a, b) => {
+            const numA = parseFloat(a);
+            const numB = parseFloat(b);
+            // Sort numerically if both are numbers, otherwise alphabetically
+            if (!isNaN(numA) && !isNaN(numB)) {
+                return numA - numB;
+            }
+            return a.localeCompare(b);
+        });
+        res.status(200).json({ availableSizes: sizesAsStrings });
     } catch (error) {
         console.error('Error fetching available sizes:', error);
         res.status(500).json({ message: 'Internal Server Error' });

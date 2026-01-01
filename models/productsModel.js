@@ -8,7 +8,7 @@ const ProductSchema = new mongoose.Schema({
     // productImgs: [{ type: String }],
     attributes: {
         color: { type: String },
-        sizes: [{ type: String }], 
+        sizes: [{ type: mongoose.Schema.Types.Mixed }], // Support both String and Number
     },
     price: { type: Number, required: true },
     categories: [{ 
