@@ -22,12 +22,13 @@ const getAllProducts = async (req, res) => {
 
         // Category filter
         if (category) {
-            if (!['Men', 'Women'].includes(category)) {
-                return res.status(400).json({ 
-                    message: 'Invalid category. Must be "Men" or "Women"' 
+            if (!['Men', 'Women', 'men', 'women'].includes(category)) {
+                return res.status(400).json({
+                    message: 'Invalid category. Must be "Men" or "Women"'
                 });
             }
-            filter.categories = category;
+            // Case-insensitive search for categories
+            filter.categories = { $regex: new RegExp(`^${category}$`, 'i') };
         }
 
         // Price range filter
@@ -112,13 +113,16 @@ const getProductsByCategory = async (req, res) => {
 
     try {
         // Validate category
-        if (!['Men', 'Women'].includes(category)) {
-            return res.status(400).json({ 
-                message: 'Invalid category. Must be "Men" or "Women"' 
+        if (!['Men', 'Women', 'men', 'women'].includes(category)) {
+            return res.status(400).json({
+                message: 'Invalid category. Must be "Men" or "Women"'
             });
         }
 
-        const products = await Product.find({ categories: category });
+        // Case-insensitive search
+        const products = await Product.find({
+            categories: { $regex: new RegExp(`^${category}$`, 'i') }
+        });
         res.json({
             category,
             count: products.length,
